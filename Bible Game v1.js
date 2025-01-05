@@ -1,7 +1,7 @@
 // Create the canvas and set up the game----------------------------------------------------------------------------- Part 1
 const canvas = document.createElement('canvas');
 const ctx = canvas.getContext('2d');
-const leftPadding = 0; // Define the left padding as a variable
+let leftPadding = 0; // Define the left padding as a variable
 canvas.width = 1600 + leftPadding; // Include leftPadding in the total width
 canvas.height = 900; // Updated height
 let level = 1; // Start at level 1
@@ -16,7 +16,7 @@ canvas.style.left = `${leftPadding}px`;
 
 // Define the maze layout
 let maze;
-const cellSize = 50;
+let cellSize = 50;
 
 // Define the doors and their positions
 const doors = [];
@@ -35,12 +35,54 @@ let purpleSquares = [
 
 let bibleVerses = [];
 
-// Define the hero---------------------------------------------------------------------------------------------------------------------------------------- Part 2
+// Add scaling logic for the canvas
+function scaleCanvas() {
+    const internalWidth = 1600; // Fixed logical width
+    const internalHeight = 900; // Fixed logical height
+    const aspectRatio = internalWidth / internalHeight; // Calculate aspect ratio
+
+    const availableWidth = window.innerWidth;
+    const availableHeight = window.innerHeight;
+
+    // Calculate the scaling factor to preserve aspect ratio
+    const scale = Math.min(
+        availableWidth / internalWidth,
+        availableHeight / internalHeight
+    );
+
+    // Calculate the new scaled width and height
+    const scaledWidth = internalWidth * scale;
+    const scaledHeight = internalHeight * scale;
+
+    // Apply the scaling
+    canvas.style.width = `${scaledWidth}px`;
+    canvas.style.height = `${scaledHeight}px`;
+
+    // Center the canvas on the screen
+    canvas.style.marginTop = `${(availableHeight - scaledHeight) / 2}px`;
+    canvas.style.marginLeft = `${(availableWidth - scaledWidth) / 2}px`;
+
+    console.log(`Canvas scaled to ${scaledWidth}x${scaledHeight}, preserving aspect ratio.`);
+}
+
+// Attach the resize event listener and scale the canvas initially
+window.addEventListener('resize', scaleCanvas);
+scaleCanvas(); // Initial scaling
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------- Part 2
 const hero = {
     x: 0,
     y: 0,
     radius: 10,
     speed: 5
+};
+
+// Preload the hero image
+const heroImage = new Image();
+heroImage.src = 'hero.png'; // Ensure hero.png is in the correct directory
+heroImage.onload = function () {
+    console.log('Hero image loaded successfully.');
 };
 
 // Define the enemy
@@ -85,16 +127,76 @@ function showNotification(message, options = {}) {
 }
 //---------------------------------------------------------------------------------------------------------------------------------------- Part 3
 function resetGame() {
-    level = 1; // Reset level
-    generateMaze(18, 32); // Regenerate the maze
-    doors.length = 0; // Reset doors
-    placeDoors(); // Reinitialize doors
-    spawnHero(); // Reset hero position
-    placeEnemy(); // Reinitialize enemy position and status
-    enemy.active = true; // Reactivate the enemy
+    levelResetTriggered = false; // Reset level reset trigger
+    enemyCollisionHandled = false; // Reset enemy collision handling
+    purpleSquareCooldown = false; // Reset purple square cooldown
+    gamePaused = false; // Ensure the game is not paused after restart
+
+    console.log('Resetting game...');
+    console.log(`Initial gamePaused state: ${gamePaused}`);
+
+    // Stop the current game loop to prevent duplicate intervals
+    stopGameLoop();
+
+    // Reset the level number
+    level = 1; // Reset to the first level (or set appropriately)
+    console.log(`Level reset to: ${level}`);
+
+    // Reinitialize properties dynamically for the current level
+    const dimensions = getMazeDimensions(level);
+    adjustPropertiesForLevel(level); // Properly adjust cell size and related properties
+    generateMaze(dimensions.rows, dimensions.cols); // Regenerate the maze with the correct dimensions
+
+    console.log(`Maze regenerated with dimensions: rows=${dimensions.rows}, cols=${dimensions.cols}`);
+    console.log(`Cell size after adjustment: ${cellSize}`);
+
+    // Reset hero and enemy positions
+    spawnHero();
+    console.log(`Hero spawned at: x=${hero.x}, y=${hero.y}`);
+
+    placeEnemy(); // Place the enemy at a corner or deactivate it for levels below 10
+    enemy.speed = 2; // Ensure the enemy's speed is reset to the default
+    console.log(`Enemy placed. Active state: ${enemy.active}, Speed: ${enemy.speed}`);
+
+    // Reinitialize blue squares
+    placeCornerSquares(); // Ensure this is called after maze and cell size updates
+    console.log('Corner squares reinitialized.');
+
+    // Reset purple squares
+    initializePurpleSquares(); // Ensure this is called after maze and cell size updates
+    console.log('Purple squares reinitialized.');
+
+    // Reset doors
+    doors.length = 0; // Clear current doors
+    placeDoors(); // Reinitialize door placements
+    console.log(`Doors reset. Total doors: ${doors.length}`);
+
+    // Ensure all movement and interaction mechanics are reinitialized
+    stopHeroMovement();
+    isHeroMoving = false;
+    currentPath = [];
+    moveHero(); // Reinitialize hero movement after resetting everything
+
+    console.log('Game movement reset.');
+    console.log(`Game paused state after reset: ${gamePaused}`);
     console.log('Game restarted');
     gameLoop(); // Restart the game loop
 }
+
+function stopGameLoop() {
+    if (gameLoopId !== null) {
+        console.log('Stopping existing game loop...');
+        cancelAnimationFrame(gameLoopId); // Stop the animation frame
+        gameLoopId = null; // Reset the game loop ID
+    } else {
+        console.log('No existing game loop to stop.');
+    }
+}
+
+
+
+
+
 
 
 
@@ -136,8 +238,47 @@ function generateMaze(rows, cols) {
     carvePassage(1, 1);
 }
 
+// Dynamically adjust maze size based on level
+function getMazeDimensions(level) {
+    const baseRows = 18;
+    const baseCols = 32;
+    const scaleFactor = Math.max(1, Math.floor(level / 2));
+    return { rows: baseRows * scaleFactor, cols: baseCols * scaleFactor };
+}
+
+
 // Ensure the maze is generated before defining exits
 generateMaze(18, 32); // Adjusted dimensions for the maze
+
+
+// Adjust properties dynamically based on level---------------------------------------------------------------------------------------------------------------------------------------- Part X
+function adjustPropertiesForLevel(level) {
+    const baseCellSize = 50;
+    cellSize = baseCellSize / Math.max(1, Math.floor(level / 2));
+
+    // Scale door size
+    doorSize.width = cellSize;
+    doorSize.height = cellSize;
+
+    // Scale hero and enemy radius
+    hero.radius = cellSize / 5;
+    enemy.radius = cellSize / 5;
+
+    // Update purple square size
+    purpleSquares.forEach(square => {
+        square.width = cellSize;
+        square.height = cellSize;
+    });
+
+    // Adjust corner squares
+    cornerSquares.forEach(square => {
+        square.width = cellSize;
+        square.height = cellSize;
+    });
+
+    console.log(`Properties adjusted for level ${level}: cellSize=${cellSize}`);
+}
+
 
 // Define four exits for the maze----------------------------------------------------------------------------- Part 5
 const exits = [
@@ -274,18 +415,32 @@ function parseReference(reference) {
 }
 
 
-// Draw the maze---------------------------------------------------------------------------------------------- Part 8
+//---------------------------------------------------------------------------------------------------------------------------------------- Part 8
+const portalImage = new Image();
+portalImage.src = 'portal.png'; // Ensure portal.png is in the correct directory
+portalImage.onload = function () {
+    console.log('Portal image loaded successfully.');
+};
+
+const floorImage = new Image();
+floorImage.src = 'floor.jpg'; // Ensure floor.jpg is in the correct directory
+floorImage.onload = function () {
+    console.log('Floor image loaded successfully.');
+};
+
 function drawMaze() {
-    ctx.fillStyle = 'black';
     for (let row = 0; row < maze.length; row++) {
         for (let col = 0; col < maze[row].length; col++) {
+            const x = col * cellSize + leftPadding;
+            const y = row * cellSize;
+
             if (maze[row][col] === 1) {
-                ctx.fillRect(
-                    col * cellSize + leftPadding, // Include leftPadding
-                    row * cellSize,
-                    cellSize,
-                    cellSize
-                );
+                // Draw black tiles for walls
+                ctx.fillStyle = 'black';
+                ctx.fillRect(x, y, cellSize, cellSize);
+            } else if (maze[row][col] === 0) {
+                // Draw floor.jpg for walkable tiles
+                ctx.drawImage(floorImage, x, y, cellSize, cellSize);
             }
         }
     }
@@ -294,15 +449,17 @@ function drawMaze() {
     ctx.strokeStyle = 'blue';
     ctx.lineWidth = 10;
     ctx.strokeRect(leftPadding, 0, canvas.width - leftPadding, canvas.height);
+}
 
-    // Draw the purple squares if they exist
+function drawPortals() {
+    // Draw the purple squares if they exist, replacing them with the portal image
     if (purpleSquares.length > 0) {
-        ctx.fillStyle = 'purple';
         purpleSquares.forEach(square => {
-            ctx.fillRect(square.x, square.y, square.width, square.height);
+            ctx.drawImage(portalImage, square.x, square.y, square.width, square.height);
         });
     }
 }
+
 
 
 function placePurpleSquares() {
@@ -320,49 +477,70 @@ function placePurpleSquares() {
 
 
 
+//---------------------------------------------------------------------------------------------------------------------------------------- Part 9
+// Ensure doorImage is declared globally and initialized before use
+const doorImage = new Image();
+doorImage.src = 'door.jpg'; // Ensure door.jpg is in the correct directory
+doorImage.onload = function () {
+    console.log('Door image loaded successfully.');
+};
+
 // Place doors only in corridors
 function placeDoors() {
-  const corridors = [];
-  for (let row = 0; row < maze.length; row++) {
-    for (let col = 0; col < maze[row].length; col++) {
-      if (maze[row][col] === 0) {
-        corridors.push({ row, col });
-      }
+    const corridors = [];
+    for (let row = 0; row < maze.length; row++) {
+        for (let col = 0; col < maze[row].length; col++) {
+            if (maze[row][col] === 0) {
+                corridors.push({ row, col });
+            }
+        }
     }
-  }
 
-  // Shuffle corridors for randomness
-  corridors.sort(() => Math.random() - 0.5);
+    // Shuffle corridors for randomness
+    corridors.sort(() => Math.random() - 0.5);
 
-// Place doors in the first four corridors----------------------------------------------------------------------------- Part 9
-for (let i = 0; i < Math.min(4, corridors.length); i++) {
-    const { row, col } = corridors[i];
-    doors.push({
-        x: col * cellSize + leftPadding, // Correct padding applied
-        y: row * cellSize,
-        removed: false,
-        incorrect: false
-    });
+    // Place doors in the first four corridors
+    for (let i = 0; i < Math.min(4, corridors.length); i++) {
+        const { row, col } = corridors[i];
+        doors.push({
+            x: col * cellSize + leftPadding, // Correct padding applied
+            y: row * cellSize,
+            removed: false,
+            incorrect: false,
+        });
+    }
 }
-}
+
 // Draw the doors
 function drawDoors() {
+    if (!doorImage.complete) {
+        console.warn('Door image is not yet loaded.');
+        return;
+    }
+
     doors.forEach(door => {
         if (!door.removed) {
-            ctx.fillStyle = door.incorrect ? 'red' : 'green';
-            ctx.fillRect(door.x, door.y, doorSize.width, doorSize.height); // Use door.x and door.y directly
+            if (door.incorrect) {
+                // Draw a red rectangle for incorrect doors
+                ctx.fillStyle = 'red';
+                ctx.fillRect(door.x, door.y, doorSize.width, doorSize.height);
+            } else {
+                // Replace correct doors with the door.jpg image
+                ctx.drawImage(doorImage, door.x, door.y, doorSize.width, doorSize.height);
+            }
         }
     });
 }
 
 // Draw the hero
 function drawHero() {
-    ctx.beginPath();
-    ctx.arc(hero.x, hero.y, hero.radius, 0, Math.PI * 2);
-    ctx.fillStyle = 'yellow';
-    ctx.fill();
-    ctx.closePath();
+    const heroSize = 50; // Size of the hero image (50x50 pixels)
+    const offset = heroSize / 2;
+
+    // Draw the hero image centered at the hero's position
+    ctx.drawImage(heroImage, hero.x - offset, hero.y - offset, heroSize, heroSize);
 }
+
 
 // Centralized list of Bible books
 const allBooks = [
@@ -413,20 +591,43 @@ let currentPath = []; // Store the current path
 let gamePaused = false; // Pause state for the game
 
 function moveHero() {
-    canvas.addEventListener('click', (event) => {
-        if (gamePaused) return; // Prevent movement when the game is paused
+    // Debugging log to confirm the function is called
+    console.log('moveHero reinitialized');
+    
+    // Remove any existing event listeners to avoid duplicate bindings
+    canvas.removeEventListener('click', handleHeroMove);
 
-        const rect = canvas.getBoundingClientRect();
-        const clickX = event.clientX - rect.left - leftPadding;
-        const clickY = event.clientY - rect.top;
+    // Attach the click event listener
+    canvas.addEventListener('click', handleHeroMove);
+}
 
-        moveToClosestValidTile(clickX, clickY);
-    });
+function handleHeroMove(event) {
+    if (gamePaused) {
+        console.log('Game paused; ignoring click');
+        return; // Prevent movement when the game is paused
+    }
+
+    const pos = getScaledMousePosition(event); // Get the scaled mouse position
+    console.log(`Hero clicked at scaled position: x=${pos.x}, y=${pos.y}`);
+    moveToClosestValidTile(pos.x, pos.y);
+}
+
+function getScaledMousePosition(event) {
+    const rect = canvas.getBoundingClientRect(); // Get the canvas position
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    return {
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY
+    };
 }
 
 function moveToClosestValidTile(clickX, clickY) {
     let targetCol = Math.floor(clickX / cellSize);
     let targetRow = Math.floor(clickY / cellSize);
+
+    console.log(`Initial target: col=${targetCol}, row=${targetRow}`);
 
     // Adjust target to the closest valid tile if necessary
     if (
@@ -436,10 +637,13 @@ function moveToClosestValidTile(clickX, clickY) {
         targetRow >= maze.length ||
         maze[targetRow][targetCol] !== 0
     ) {
+        console.log('Target is invalid; finding closest valid tile');
         const closestValid = findClosestWalkableTile(targetCol, targetRow);
         targetCol = closestValid.col;
         targetRow = closestValid.row;
     }
+
+    console.log(`Final target: col=${targetCol}, row=${targetRow}`);
 
     const start = {
         x: Math.floor((hero.x - leftPadding) / cellSize),
@@ -450,11 +654,55 @@ function moveToClosestValidTile(clickX, clickY) {
     const path = findPath(maze, start, end);
 
     if (path.length > 0) {
+        console.log(`Path found: ${JSON.stringify(path)}`);
         stopHeroMovement(); // Stop any existing movement
         currentPath = path; // Set the current path
         followPath(path);
+    } else {
+        console.warn('No valid path found');
     }
 }
+
+function stopHeroMovement() {
+    if (moveInterval) {
+        clearInterval(moveInterval); // Clear any ongoing movement intervals
+        moveInterval = null;
+        console.log('Hero movement stopped');
+    }
+    isHeroMoving = false; // Mark the hero as not moving
+    currentPath = []; // Clear the current path
+}
+
+function followPath(path) {
+    if (path.length <= 1) {
+        console.log('Path completed');
+        stopHeroMovement();
+        return;
+    }
+
+    const nextStep = path[1]; // Get the next step on the path
+    const targetX = nextStep.x * cellSize + cellSize / 2 + leftPadding;
+    const targetY = nextStep.y * cellSize + cellSize / 2;
+
+    isHeroMoving = true;
+
+    moveInterval = setInterval(() => {
+        const dx = targetX - hero.x;
+        const dy = targetY - hero.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < hero.speed) {
+            hero.x = targetX;
+            hero.y = targetY;
+            clearInterval(moveInterval);
+            followPath(path.slice(1)); // Continue to the next step
+        } else {
+            hero.x += (dx / distance) * hero.speed;
+            hero.y += (dy / distance) * hero.speed;
+        }
+    }, 1000 / 60); // Update at 60 FPS
+}
+
 // Find the closest walkable tile------------------------------------------------------------------------------- Part 12
 function findClosestWalkableTile(targetCol, targetRow) {
     let closest = { col: targetCol, row: targetRow };
@@ -474,8 +722,10 @@ function findClosestWalkableTile(targetCol, targetRow) {
         }
     }
 
+    console.log(`Closest walkable tile: col=${closest.col}, row=${closest.row}`);
     return closest;
 }
+
 function findWalkableTileOnSide(side) {
     const validTiles = [];
     const halfMaze = Math.floor(maze[0].length / 2);
@@ -504,15 +754,59 @@ function findWalkableTileOnSide(side) {
     return validTiles[0];
 }
 
-// Stop any ongoing hero movement
+function moveToClosestValidTile(clickX, clickY) {
+    console.log('moveToClosestValidTile called');
+    let targetCol = Math.floor(clickX / cellSize);
+    let targetRow = Math.floor(clickY / cellSize);
+
+    console.log(`Initial target: col=${targetCol}, row=${targetRow}`);
+
+    // Adjust target to the closest valid tile if necessary
+    if (
+        targetCol < 0 ||
+        targetCol >= maze[0].length ||
+        targetRow < 0 ||
+        targetRow >= maze.length ||
+        maze[targetRow][targetCol] !== 0
+    ) {
+        console.log('Target is invalid; finding closest valid tile');
+        const closestValid = findClosestWalkableTile(targetCol, targetRow);
+        targetCol = closestValid.col;
+        targetRow = closestValid.row;
+    }
+
+    console.log(`Final target: col=${targetCol}, row=${targetRow}`);
+
+    const start = {
+        x: Math.floor((hero.x - leftPadding) / cellSize),
+        y: Math.floor(hero.y / cellSize),
+    };
+    const end = { x: targetCol, y: targetRow };
+
+    console.log(`Start: ${JSON.stringify(start)}, End: ${JSON.stringify(end)}`);
+
+    const path = findPath(maze, start, end);
+
+    if (path.length > 0) {
+        console.log(`Path found: ${JSON.stringify(path)}`);
+        stopHeroMovement(); // Stop any existing movement
+        currentPath = path; // Set the current path
+        followPath(path);
+    } else {
+        console.warn('No valid path found');
+    }
+}
+
 function stopHeroMovement() {
     if (moveInterval) {
-        clearInterval(moveInterval); // Clear the current interval
+        clearInterval(moveInterval); // Clear any ongoing movement intervals
         moveInterval = null;
+        console.log('Hero movement stopped');
     }
     isHeroMoving = false; // Mark the hero as not moving
     currentPath = []; // Clear the current path
 }
+
 //---------------------------------------------------------------------------------------------------------------------------------------- Part 13
 function followPath(path) {
     let currentStep = 0;
@@ -569,7 +863,9 @@ function pauseGame() {
 // Resume the game when widget is closed
 function resumeGame() {
     gamePaused = false; // Clear the pause flag
+    console.log('Game resumed');
 }
+
 
 // Update collision logic for doors
 function checkHeroDoorCollision() {
@@ -702,7 +998,10 @@ function resetLevel() {
 
     stopHeroMovement(); // Stop hero movement before resetting the level
     level++; // Increment level
-    generateMaze(18, 32); // Regenerate the maze
+
+    const dimensions = getMazeDimensions(level);
+    adjustPropertiesForLevel(level); // Adjust properties dynamically
+    generateMaze(dimensions.rows, dimensions.cols); // Regenerate the maze with new dimensions
 
     // Reset doors and reinitialize
     doors.length = 0;
@@ -996,7 +1295,44 @@ function createBibleReferenceWidget(verse, container, onResult) {
 
 
 
-// Start the game loop----------------------------------------------------------------------------- Part 24
+//---------------------------------------------------------------------------------------------------------------------------------------- Part 24
+let gameLoopId = null; // Declare gameLoopId globally to track the loop
+let frameCounter = 0; // Counter to track the frames
+
+function gameLoop() {
+    if (frameCounter % 60 === 0) { // Log once every 60 frames
+        console.log(`Running gameLoop with ID: ${gameLoopId}, Frame: ${frameCounter}`);
+    }
+    frameCounter++; // Increment the frame counter
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawMaze();
+    drawDoors();
+    drawCornerSquares(); // Add the corner squares
+    drawHero(); // Draw the hero with hero.png
+    
+    drawLevelText(); // Add the level text
+    moveEnemy(); // Move the enemy
+    checkCornerSquareCollision(); // Check if the hero collides with a corner square
+    checkPurpleSquareCollision(); // Check if the hero collides with purple squares
+    checkHeroEnemyCollision(); // Check if the enemy catches the hero
+
+    drawPortals(); // Draw portals LAST to ensure visibility
+    drawEnemy(); // Draw the enemy
+    levelResetTriggered = false; // Reset the flag for the next frame
+    gameLoopId = requestAnimationFrame(gameLoop); // Store the animation frame ID
+}
+
+function stopGameLoop() {
+    if (gameLoopId !== null) {
+        console.log(`Stopping game loop with ID: ${gameLoopId}`);
+        cancelAnimationFrame(gameLoopId); // Stop the animation frame
+        gameLoopId = null; // Reset the game loop ID
+    } else {
+        console.log('No existing game loop to stop.');
+    }
+}
+
 function drawLevelText() {
     ctx.font = '24px Arial'; // Set font size and style
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; // Semi-transparent black background
@@ -1008,35 +1344,29 @@ function drawLevelText() {
 
 
 
-function gameLoop() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawMaze();
-    drawDoors();
-    drawCornerSquares(); // Add the corner squares
-    drawHero();
-    drawEnemy(); // Draw the enemy
-    drawLevelText(); // Add the level text
-    moveEnemy(); // Move the enemy
-    checkCornerSquareCollision(); // Check if the hero collides with a corner square
-    checkPurpleSquareCollision(); // Check if the hero collides with purple squares
-    checkHeroEnemyCollision(); // Check if the enemy catches the hero
-
-    levelResetTriggered = false; // Reset the flag for the next frame
-    requestAnimationFrame(gameLoop);
-}
 
 
 
 
 
 
+//---------------------------------------------------------------------------------------------------------------------------------------- Part 25
+const stairsImage = new Image();
+stairsImage.src = 'stairs.jpg'; // Ensure stairs.jpg is in the correct directory
+stairsImage.onload = function () {
+    console.log('Stairs image loaded successfully.');
+};
 
-// Handle corner squares logic----------------------------------------------------------------------------- Part 25
 function drawCornerSquares() {
-    ctx.fillStyle = 'blue';
+    if (!stairsImage.complete) {
+        console.warn('Stairs image is not yet loaded.');
+        return;
+    }
+
     cornerSquares.forEach(square => {
         if (!square.reached) {
-            ctx.fillRect(square.x, square.y, square.width, square.height);
+            // Replace blue squares with stairs.jpg
+            ctx.drawImage(stairsImage, square.x, square.y, square.width, square.height);
         }
     });
 }
@@ -1067,6 +1397,7 @@ function placeCornerSquares() {
 }
 
 
+
 //---------------------------------------------------------------------------------------------------------------------------------------- Part 26
 function checkCornerSquareCollision() {
     if (levelResetTriggered) return; // Prevent multiple resets during the same level
@@ -1081,7 +1412,7 @@ function checkCornerSquareCollision() {
         if (!square.reached && isColliding) {
             square.reached = true; // Mark the square as reached
             console.log(`Corner square reached: Square ${index}`);
-            showNotification('Corner square reached! Resetting the level...', { onDismiss: resetLevel });
+            showNotification('Stairs reached! Resetting the level...', { onDismiss: resetLevel });
             levelResetTriggered = true; // Set flag to prevent multiple resets
             resetLevel(); // Reset the level for the next round
         }
@@ -1099,21 +1430,41 @@ function stopHeroMovement() {
 placeCornerSquares();
 
 
-// Enemy logic---------------------------------------------------------------------------------------------------------------------- Part 27
+//---------------------------------------------------------------------------------------------------------------------------------------- Part 27
+// Preload the slime image
+const slimeImage = new Image();
+slimeImage.src = 'slime.png'; // Ensure slime.png is in the correct directory
+slimeImage.onload = function () {
+    console.log('Slime image loaded successfully.');
+};
+
+// Variables for squash and stretch effect
+let stretchFactor = 0; // Tracks the animation phase
+const stretchSpeed = 0.05; // Speed of the squash/stretch
+const maxStretch = 0.2; // Maximum stretch/compression percentage
+
 function placeEnemy() {
+    if (level < 0) {
+        enemy.active = false; // Disable the enemy for levels below 10
+        return;
+    }
+
     const randomCorner = cornerSquares[Math.floor(Math.random() * cornerSquares.length)];
     enemy.x = randomCorner.x + randomCorner.width / 2;
     enemy.y = randomCorner.y + randomCorner.height / 2;
     enemy.stoppedUntil = null; // Reset any stop timer
     enemy.active = true; // Ensure the enemy is active
+    enemy.speed = 2; // Reset the speed to the default value
+    console.log(`Enemy placed at x=${enemy.x}, y=${enemy.y}, Speed=${enemy.speed}`);
 }
-
 
 function moveEnemy() {
     if (!enemy.active) return;
 
     // Check if the enemy is currently stopped
     if (enemy.stoppedUntil && Date.now() < enemy.stoppedUntil) return;
+
+    console.log(`Enemy moving at speed: ${enemy.speed}`); // Log speed every tick
 
     const start = {
         x: Math.floor((enemy.x - leftPadding) / cellSize),
@@ -1141,19 +1492,32 @@ function moveEnemy() {
         }
     }
 
-    // Check if the enemy is at a door---------------------------------------------------------------------------------------------------------------------------------------- Part 28
-    checkEnemyDoorCollision();
+    checkEnemyDoorCollision(); // Check if the enemy is at a door
 }
-
 
 function drawEnemy() {
     if (!enemy.active) return;
 
-    ctx.beginPath();
-    ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-    ctx.fillStyle = 'red';
-    ctx.fill();
-    ctx.closePath();
+    const imageSize = 50; // Base size of the slime image
+    const offset = imageSize / 2;
+
+    // Update the stretch factor
+    stretchFactor += stretchSpeed;
+
+    // Calculate squash and stretch scale
+    const scaleX = 1 + Math.sin(stretchFactor) * maxStretch; // Horizontal stretch
+    const scaleY = 1 - Math.sin(stretchFactor) * maxStretch; // Vertical squash
+
+    // Save the context to isolate transformations
+    ctx.save();
+
+    // Apply squash and stretch transformations
+    ctx.translate(enemy.x, enemy.y); // Move to the enemy's position
+    ctx.scale(scaleX, scaleY); // Apply the stretch/squash effect
+    ctx.drawImage(slimeImage, -offset, -offset, imageSize, imageSize);
+
+    // Restore the context
+    ctx.restore();
 }
 
 function checkEnemyDoorCollision() {
@@ -1168,6 +1532,7 @@ function checkEnemyDoorCollision() {
         }
     });
 }
+
 
 
 //---------------------------------------------------------------------------------------------------------------------------------------- Part 29
@@ -1279,14 +1644,17 @@ function findPath(maze, start, end) {
 
 // Initialize the game---------------------------------------------------------------------------------------------------------------------------------------- Part 31
 async function initGame() {
-    generateMaze(18, 32); // Adjusted for 1600x900 resolution
+    const dimensions = getMazeDimensions(level);
+    adjustPropertiesForLevel(level); // Adjust properties based on the current level
+    generateMaze(dimensions.rows, dimensions.cols); // Generate the maze with updated dimensions
     await loadVerses(); // Ensure verses are loaded before starting the game
     spawnHero(); // Ensure hero spawns in a valid corridor
     placeDoors();
     placeEnemy(); // Place the enemy at a random corner
-    placePurpleSquares(); // Place the purple squares
+    initializePurpleSquares(); // Place the purple squares
     moveHero();
     gameLoop();
 }
+
 
 initGame();
